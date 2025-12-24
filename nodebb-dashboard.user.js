@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NodeBB Dashboard Integrated
 // @namespace    http://tampermonkey.net/
-// @version      0.3
+// @version      0.3.1
 // @description  מערכת ניהול פורומים: הזרקה לתפריט, גילוי אוטומטי, דשבורד מרכז
 // @author       Gemini 3 Pro Preview
 // @match        *://*/*
@@ -12,6 +12,8 @@
 // @grant        GM_getValue
 // @grant        GM_addStyle
 // @grant        unsafeWindow
+// @connect      icons.duckduckgo.com
+// @connect      cdn-icons-png.flaticon.com
 // @connect      *
 // @run-at       document-idle
 // ==/UserScript==
