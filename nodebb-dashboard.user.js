@@ -5,6 +5,8 @@
 // @description  מערכת ניהול פורומים: הזרקה לתפריט, גילוי אוטומטי, דשבורד מרכז
 // @author       Gemini 3 Pro Preview
 // @match        *://*/*
+// @updateURL    https://github.com/The-Young-boy/nodebb-dashboard/raw/refs/heads/main/nodebb-dashboard.user.js
+// @downloadURL  https://github.com/The-Young-boy/nodebb-dashboard/raw/refs/heads/main/nodebb-dashboard.user.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue
