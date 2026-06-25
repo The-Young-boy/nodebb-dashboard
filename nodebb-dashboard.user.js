@@ -17,17 +17,17 @@
 // @connect      *
 // @run-at       document-idle
 // ==/UserScript==
-
+ 
 (function() {
     'use strict';
-
+ 
     // --- 0. פונקציות אבטחה (מניעת פריצות XSS) ---
     function esc(str) {
         if (!str) return '';
         const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
         return String(str).replace(/[&<>"']/g, m => map[m]);
     }
-
+ 
     function safeStripHTML(html) {
         if (!html) return "";
         try {
@@ -35,16 +35,18 @@
             return doc.body.textContent || "";
         } catch(e) { return ""; }
     }
-
+ 
     // --- 1. הגדרות ---
     const STORAGE_KEY_SITES = 'nodebb_dashboard_sites_v03';
     const STORAGE_KEY_IGNORED = 'nodebb_dashboard_ignored_v03';
     const DASHBOARD_HASH = '#nodebb-dashboard';
-
+ 
     const DEFAULT_SITES = [
         { name: 'מתמחים', url: 'https://mitmachim.top' }
     ];
-
+ 
+    let currentUnreadTopics = [];
+ 
     // --- 2. ניהול נתונים ---
     function getSites() {
         const stored = GM_getValue(STORAGE_KEY_SITES);
@@ -63,14 +65,14 @@
             GM_setValue(STORAGE_KEY_IGNORED, JSON.stringify(list));
         }
     }
-
+ 
     function isNodeBB() {
         try {
             return (unsafeWindow.config && unsafeWindow.ajaxify) ||
-                   document.querySelector('meta[name="generator"][content="NodeBB"]');
+                document.querySelector('meta[name="generator"][content="NodeBB"]');
         } catch(e) { return false; }
     }
-
+ 
     function getSiteName() {
         try {
             if (unsafeWindow.config && unsafeWindow.config.siteTitle) {
@@ -81,25 +83,25 @@
         if (parts.length > 1) return parts.pop().trim();
         return document.title.trim();
     }
-
+ 
     // --- 3. לוגיקה ראשית ---
     function init() {
         if (!isNodeBB()) return;
-
+ 
         if (window.location.hash === DASHBOARD_HASH) {
             injectDashboard();
         }
-
+ 
         window.addEventListener('hashchange', () => {
             if (window.location.hash === DASHBOARD_HASH) {
                 location.reload();
             }
         });
-
+ 
         const currentUrl = window.location.origin;
         const sites = getSites();
         const isMySite = sites.some(s => s.url === currentUrl);
-
+ 
         if (isMySite) {
             ensureMenuButton();
         } else {
@@ -109,7 +111,7 @@
             }
         }
     }
-
+ 
     function ensureMenuButton() {
         setInterval(() => {
             if (document.getElementById('nodebb-dash-link')) return;
@@ -129,14 +131,14 @@
             }
         }, 1500);
     }
-
+ 
     function showDiscoveryPopup(url) {
         if (document.getElementById('ndb-popup')) return;
         const rawTitle = getSiteName();
         const div = document.createElement('div');
         div.id = 'ndb-popup';
         div.style.cssText = `position:fixed; bottom:20px; right:20px; background:white; padding:15px; border:1px solid #ccc; box-shadow:0 5px 20px rgba(0,0,0,0.2); z-index:999999; direction:rtl; width:280px; border-radius:8px; font-family:sans-serif; text-align:right;`;
-
+ 
         div.innerHTML = `
             <div style="font-weight:bold; margin-bottom:10px;">זיהיתי פורום חדש!</div>
             <div style="font-size:13px; margin-bottom:10px;">להוסיף את <b>${esc(rawTitle)}</b> למרכז הפורומים?</div>
@@ -146,7 +148,7 @@
             </div>
         `;
         document.body.appendChild(div);
-
+ 
         document.getElementById('p-yes').onclick = () => {
             const sites = getSites();
             sites.push({ name: safeStripHTML(rawTitle).trim().slice(0,150), url: url });
@@ -159,19 +161,19 @@
             div.remove();
         };
     }
-
+ 
     function injectDashboard() {
         const contentDiv = document.getElementById('content');
         if (!contentDiv) {
             setTimeout(injectDashboard, 100);
             return;
         }
-
+ 
         document.title = "מרכז הפורומים";
         const link = document.querySelector("link[rel*='icon']") || document.createElement('link');
         link.type = 'image/x-icon'; link.rel = 'shortcut icon'; link.href = 'https://cdn-icons-png.flaticon.com/512/9966/9966469.png';
         document.head.appendChild(link);
-
+ 
         GM_addStyle(`
             @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap');
             #nbd-root { font-family: 'Assistant', sans-serif; font-size: 16px; direction: rtl; text-align: right; background: #fff; border-radius: 4px; padding: 15px; min-height: 80vh; width: 100%; }
@@ -194,12 +196,15 @@
             .nbd-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10500; display: none; justify-content: center; align-items: center; }
             .nbd-modal-box { background: white; width: 500px; padding: 20px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
         `);
-
+ 
         contentDiv.innerHTML = `
             <div id="nbd-root">
                 <div class="nbd-header">
                     <div class="nbd-h-title">נושאים שלא נקראו (כל האתרים)</div>
                     <div>
+                        <button class="nbd-btn nbd-bg-gray" id="dash-select-all">בחר הכל</button>
+                        <button class="nbd-btn nbd-bg-blue" id="dash-mark-selected">סמן נבחרים כנקראו</button>
+                        <button class="nbd-btn nbd-bg-gray" id="dash-mark-all">סמן הכל כנקרא</button>
                         <button class="nbd-btn nbd-bg-gray" id="dash-set-btn">הגדרות</button>
                         <button class="nbd-btn nbd-bg-blue" id="dash-ref-btn">רענן</button>
                     </div>
@@ -219,27 +224,31 @@
                 </div>
             </div>
         `;
-
+ 
         loadDashboardContent();
         document.getElementById('dash-ref-btn').onclick = loadDashboardContent;
+        document.getElementById('dash-select-all').onclick = toggleSelectAll;
+        document.getElementById('dash-mark-selected').onclick = markSelectedAsRead;
+        document.getElementById('dash-mark-all').onclick = markAllVisibleAsRead;
         document.getElementById('dash-set-btn').onclick = openSettings;
         document.getElementById('close-s').onclick = () => document.getElementById('dash-settings').style.display = 'none';
         document.getElementById('add-b').onclick = addSiteFromDash;
     }
-
+ 
     async function loadDashboardContent() {
         const container = document.getElementById('dash-list');
         const sites = getSites();
         container.innerHTML = '<div style="text-align:center; padding:50px;">טוען...</div>';
-
+ 
         const results = await Promise.all(sites.map(s => fetchUnread(s)));
         const all = [].concat(...results).sort((a,b) => new Date(b.lastposttimeISO) - new Date(a.lastposttimeISO));
-
+        currentUnreadTopics = all;
+ 
         if (all.length === 0) {
             container.innerHTML = '<div style="text-align:center; padding:50px;">הכל נקרא!</div>';
             return;
         }
-
+ 
         container.innerHTML = '';
         all.forEach(t => {
             const author = t.user || {};
@@ -247,18 +256,19 @@
             const tUser = teaser ? (teaser.user || t.user) : t.user;
             const domain = new URL(t.origin.url).hostname;
             const iconUrl = `https://icons.duckduckgo.com/ip3/${domain}.ico`;
-
+ 
             let authHtml = `<div class="nbd-letter" style="background:${esc(author['icon:bgColor']||'#666')}">${esc(author['icon:text']||'?')}</div>`;
             if (author.picture) authHtml = `<img class="nbd-avatar orb-fix" data-src="${fixUrl(author.picture, t.origin.url)}">`;
-
+ 
             let tImg = `<div style="width:18px; height:18px; border-radius:50%; background:${esc(tUser['icon:bgColor']||'#666')}; display:inline-block;"></div>`;
             if (tUser.picture) tImg = `<img class="nbd-t-avatar orb-fix" data-src="${fixUrl(tUser.picture, t.origin.url)}">`;
-
+ 
             const cleanTeaser = teaser ? safeStripHTML(teaser.content) : "אין תוכן";
-
+ 
             const row = document.createElement('div');
             row.className = 'nbd-topic';
             row.innerHTML = `
+                <input type="checkbox" class="nbd-topic-check" data-tid="${esc(t.tid)}" data-origin="${esc(t.origin.url)}" style="margin-left:10px;">
                 <div class="nbd-auth">
                     <a href="${t.origin.url}/user/${esc(author.userslug)}" target="_blank" style="text-decoration:none; display:inline-block; position:relative;">
                         ${authHtml}
@@ -281,7 +291,7 @@
         });
         document.querySelectorAll('.orb-fix').forEach(img => loadSecureImage(img.getAttribute('data-src'), img));
     }
-
+ 
     function fetchUnread(site) {
         return new Promise(resolve => {
             GM_xmlhttpRequest({
@@ -297,7 +307,99 @@
             });
         });
     }
-
+ 
+    const csrfCache = {};
+ 
+    function getCsrfToken(originUrl) {
+        return new Promise(resolve => {
+            const origin = originUrl.replace(/\/$/, "");
+ 
+            if (csrfCache[origin]) {
+                resolve(csrfCache[origin]);
+                return;
+            }
+ 
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: origin + "/api/config",
+                withCredentials: true,
+                anonymous: false,
+                onload: res => {
+                    try {
+                        const json = JSON.parse(res.responseText);
+                        const token = json.csrf_token || json.csrfToken || json.csrf;
+ 
+                        if (token) {
+                            csrfCache[origin] = token;
+                            resolve(token);
+                            return;
+                        }
+                    } catch(e) {}
+ 
+                    resolve("");
+                },
+                onerror: () => resolve("")
+            });
+        });
+    }
+ 
+    async function markTopicAsRead(originUrl, tid) {
+        const csrfToken = await getCsrfToken(originUrl);
+ 
+        return new Promise(resolve => {
+            GM_xmlhttpRequest({
+                method: "PUT",
+                url: originUrl.replace(/\/$/, "") + "/api/v3/topics/" + encodeURIComponent(tid) + "/read",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-csrf-token": csrfToken
+                },
+                data: JSON.stringify({}),
+                withCredentials: true,
+                anonymous: false,
+                onload: res => {
+                    console.log('mark read response', originUrl, tid, res.status, res.responseText);
+                    resolve(res.status >= 200 && res.status < 300);
+                },
+                onerror: err => {
+                    console.error('mark read error', originUrl, tid, err);
+                    resolve(false);
+                }
+            });
+        });
+    }
+ 
+    async function markSelectedAsRead() {
+        const checks = [...document.querySelectorAll('.nbd-topic-check:checked')];
+ 
+        if (!checks.length) {
+            alert('לא נבחרו נושאים');
+            return;
+        }
+ 
+        await Promise.all(checks.map(ch =>
+                                     markTopicAsRead(ch.dataset.origin, ch.dataset.tid)
+                                    ));
+ 
+        loadDashboardContent();
+    }
+ 
+    async function markAllVisibleAsRead() {
+        if (!currentUnreadTopics.length) return;
+ 
+        await Promise.all(currentUnreadTopics.map(t =>
+                                                  markTopicAsRead(t.origin.url, t.tid)
+                                                 ));
+ 
+        loadDashboardContent();
+    }
+ 
+    function toggleSelectAll() {
+        const checks = [...document.querySelectorAll('.nbd-topic-check')];
+        const shouldCheck = checks.some(ch => !ch.checked);
+        checks.forEach(ch => ch.checked = shouldCheck);
+    }
+ 
     function openSettings() {
         const list = document.getElementById('dash-sites-ui');
         list.innerHTML = '';
@@ -313,7 +415,7 @@
         });
         document.getElementById('dash-settings').style.display = 'flex';
     }
-
+ 
     function addSiteFromDash() {
         const n = document.getElementById('add-n').value;
         const u = document.getElementById('add-u').value.trim();
@@ -324,12 +426,12 @@
         openSettings();
         document.getElementById('add-n').value=''; document.getElementById('add-u').value='';
     }
-
+ 
     function fixUrl(url, base) {
         if (!url || url.startsWith('http')) return url;
         return base + (url.startsWith('/') ? '' : '/') + url;
     }
-
+ 
     function loadSecureImage(url, img) {
         if(!url) return;
         GM_xmlhttpRequest({
@@ -343,7 +445,7 @@
             }
         });
     }
-
+ 
     function timeAgo(d) {
         const diff = (new Date() - new Date(d)) / 1000;
         if(diff<60) return 'עכשיו';
@@ -351,6 +453,6 @@
         if(diff<86400) return Math.floor(diff/3600) + ' שע\'';
         return Math.floor(diff/86400) + ' ימים';
     }
-
+ 
     init();
 })();
